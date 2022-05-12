@@ -1,7 +1,7 @@
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
-function useTokenVerify(token) {
+export function useTokenVerify(token) {
   const navigate = useNavigate();
   fetch("config.json")
     .then((resp) => resp.json())
@@ -19,7 +19,7 @@ function useTokenVerify(token) {
           }
         )
         .then((resp) => {
-          if (200 <= resp.status && resp.status <= 299) {
+          if (300 <= resp.status || resp.status < 200) {
             navigate("/");
           }
         })
@@ -29,4 +29,17 @@ function useTokenVerify(token) {
     );
 }
 
-export default useTokenVerify;
+export async function refreshToken(refreshToken) {
+  const config = await (await fetch("config.json")).json();
+  return axios.post(
+    config.restAuthenticationServer + "token",
+    {
+      token: refreshToken,
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}

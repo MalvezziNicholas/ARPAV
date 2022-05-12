@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import {
   Table,
@@ -10,59 +10,93 @@ import {
   Paper,
   Grid,
   Typography,
-  TextField,
 } from "@mui/material";
 
-import useTokenVerify from "../utils/tokenVerify";
+import { useTokenVerify, refreshToken } from "../utils/token";
 
 import axios from "axios";
 
-function queryFromVals(vals) {
-  let query = "?";
-  let i = 0;
-  for (const v in vals) {
-    query += v;
-    if (i && i < vals.keys.length - 1) query += "&";
-    i++;
+function fetchRilevazione(token, url) {
+  return axios.post(url, null, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+    },
+  });
+}
+
+async function doRefreshToken() {
+  let resp = await refreshToken(sessionStorage.getItem("refreshToken"));
+  if (300 <= resp.status || resp.status < 200) {
+    return;
+  }
+  sessionStorage.setItem("accessToken", resp.data.accessToken);
+  return resp.data.accessToken;
+}
+
+async function fetchRilevazioni(token) {
+  try {
+    const config = await (await fetch("config.json")).json();
+    var resp = await axios.post(config.restServer + "rilevazioni", null, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+    });
+    // if resp.status is not ok try to refreshToken
+    if (300 <= resp.status || resp.status < 200) {
+      token = await doRefreshToken();
+      // if refreshToken fails return
+      if (token === undefined) {
+        return [];
+      }
+      resp = await axios.post(config.restServer + "rilevazioni", null, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+      });
+    }
+    let awaitRilevazioni = [];
+    for (const url in resp.data.rilevazioni) {
+      awaitRilevazioni.push(fetchRilevazione(token, url));
+    }
+    let rilevazioni = [];
+    // wait to fetch all rilevazioni
+    for (const rilevazione in await Promise.all(awaitRilevazioni)) {
+      if (300 <= rilevazione.status || rilevazione.status < 200) {
+        token = await doRefreshToken();
+        // if refreshToken fails return
+        if (token === undefined) {
+          return [];
+        }
+        // else retry
+        return fetchRilevazioni(token);
+      }
+      rilevazioni.push(rilevazione.data);
+    }
+    return rilevazioni;
+  } catch {
+    alert("An error occured");
+    return [];
   }
 }
 
-const fetchData = async (token, query) => {
-  return fetch("config.json")
-    .then((resp) => resp.json())
-    .then((config) =>
-      axios.post(
-        config.restAuthenticationServer + "rilevazioni" + query,
-        {},
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      )
-    )
-    .then((resp) => resp.data)
-    .catch((err) => alert(err));
-};
-
 const Rilevazioni = ({ style }) => {
-  const token = JSON.parse(sessionStorage.getItem("token"));
+  const token = sessionStorage.getItem("accessToken");
   useTokenVerify(token);
 
   const [rilevazioni, setRilevazioni] = useState([]);
-  useEffect(() => {
-    let token = JSON.parse(sessionStorage.getItem("token"));
-    fetchData(token, queryFromVals({ id, data, tipoInquinante, valore }))
-      .then((resp) => {
-        setRilevazioni(resp);
-      })
-      .catch(() => console.log("An err occured"));
-  }, []);
-
   const [id, setId] = useState("");
   const [data, setData] = useState("");
   const [tipoInquinante, setTipoInquinante] = useState("");
   const [valore, setValore] = useState("");
+
+  fetchRilevazioni(token)
+    .then((resp) => {
+      setRilevazioni(resp);
+    })
+    .catch(() => alert("An err occured"));
 
   const tableStyle = {
     padding: 20,

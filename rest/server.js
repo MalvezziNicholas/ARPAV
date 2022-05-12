@@ -12,12 +12,10 @@ const conn = mysql.createConnection({
   password: process.env.DATABASE_PASSWORD,
 });
 
-/*
 conn.connect((err) => {
   if (err) throw err;
   console.log("connected to database");
 });
-*/
 
 const jwt = require("jsonwebtoken");
 
@@ -27,14 +25,13 @@ app.listen(PORT, () => {
   console.log(`Server started on ${process.env.SERVER}:${PORT}`);
 });
 
-app.get("/stazioni", authenticateToken, (req, res) => {
+app.get("v1.1/stazioni", authenticateToken, (req, res) => {
   const queryData = ({ nome, localita, comune, procincia } = req.query);
   let query = "SELECT s.id FROM stazioni s WHERE";
   let inserted = 0;
-  for (const k in queryData) {
-    if (inserted > 0) query += " AND";
-    inserted++;
-    query += " " + queryData[k];
+  for (const column in queryData) {
+    if (inserted++) query += " AND";
+    query += " " + column + " = ?";
   }
   conn.query(query, Object.values(queryData), (error, results) => {
     if (error) {
@@ -48,7 +45,7 @@ app.get("/stazioni", authenticateToken, (req, res) => {
   });
 });
 
-app.get("/stazioni/:id", authenticateToken, (req, res) => {
+app.get("v1.1/stazioni/:id", authenticateToken, (req, res) => {
   const { id } = req.params;
   let query = "SELECT s.* FROM stazioni s WHERE s.id = ? LIMIT 1";
   conn.query(query, [id], (error, results) => {
@@ -59,7 +56,7 @@ app.get("/stazioni/:id", authenticateToken, (req, res) => {
   });
 });
 
-app.get("/rilevazioni", authenticateToken, (req, res) => {
+app.get("v1.1/rilevazioni", authenticateToken, (req, res) => {
   const queryData = ({ data, tipoInquinante, valore, _where } = req.query);
   let query = "SELECT r.id FROM rilevazioni r WHERE";
   let inserted = 0;
@@ -80,7 +77,7 @@ app.get("/rilevazioni", authenticateToken, (req, res) => {
   });
 });
 
-app.get("/rilevazioni/:id", authenticateToken, (req, res) => {
+app.get("v1.1/rilevazioni/:id", authenticateToken, (req, res) => {
   const { id } = req.params;
   let query = "SELECT r.* FROM rilevazioni r WHERE r.id = ? LIMIT 1";
   conn.query(query, [id], (error, results) => {
@@ -91,6 +88,7 @@ app.get("/rilevazioni/:id", authenticateToken, (req, res) => {
   });
 });
 
+/*
 function parseWhere(where) {
   let words = [];
   let parsedWhere = "";
@@ -145,6 +143,7 @@ function parseWhere(where) {
   }
   return { parsedWhere, ok: true };
 }
+*/
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;

@@ -19,9 +19,9 @@ import { useNavigate } from "react-router-dom";
 const Login = ({ style }) => {
   const login = async () => {
     if (remember) {
-      cookieManager.set("email", username, { path: "/" });
+      cookieManager.set("username", username, { path: "/" });
     } else {
-      cookieManager.set("email", "", { path: "/", expires: 0 });
+      cookieManager.set("username", "", { path: "/", expires: 0 });
     }
     if (!username || !password) {
       setErr("All field must be filled");
@@ -47,14 +47,8 @@ const Login = ({ style }) => {
         setErr("unexpected error");
         return;
       }
-      sessionStorage.setItem(
-        "accessToken",
-        JSON.stringify(resp.data.accessToken)
-      );
-      sessionStorage.setItem(
-        "refreshToken",
-        JSON.stringify(resp.data.refreshToken)
-      );
+      sessionStorage.setItem("accessToken", resp.data.accessToken);
+      sessionStorage.setItem("refreshToken", resp.data.refreshToken);
       navigate("/stazioni");
     } catch (err) {
       setErr("unexpected error");
