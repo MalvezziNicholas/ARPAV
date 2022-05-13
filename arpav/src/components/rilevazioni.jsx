@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 import {
   Table,
@@ -9,94 +9,91 @@ import {
   TableRow,
   Paper,
   Grid,
-  Typography,
+  TextField,
 } from "@mui/material";
 
-import { useTokenVerify, refreshToken } from "../utils/token";
+import {
+  doRefreshToken,
+  InvalidTokenError,
+  isInvalidTokenStatus,
+} from "../utils/token";
 
 import axios from "axios";
 
-function fetchRilevazione(token, url) {
-  return axios.post(url, null, {
+import { useNavigate } from "react-router-dom";
+
+async function fetchRilevazioni(token) {
+  const config = await (await fetch("config.json")).json();
+  var resp = await axios.post(config.restServer + "rilevazioni", null, {
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer " + token,
     },
   });
-}
-
-async function doRefreshToken() {
-  let resp = await refreshToken(sessionStorage.getItem("refreshToken"));
-  if (300 <= resp.status || resp.status < 200) {
-    return;
-  }
-  sessionStorage.setItem("accessToken", resp.data.accessToken);
-  return resp.data.accessToken;
-}
-
-async function fetchRilevazioni(token) {
-  try {
-    const config = await (await fetch("config.json")).json();
-    var resp = await axios.post(config.restServer + "rilevazioni", null, {
+  // if resp.status is not ok try to refreshToken
+  if (isInvalidTokenStatus(resp.status)) {
+    token = await doRefreshToken();
+    // retry
+    resp = await axios.post(config.restServer + "rilevazioni", null, {
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer " + token,
       },
     });
-    // if resp.status is not ok try to refreshToken
-    if (300 <= resp.status || resp.status < 200) {
-      token = await doRefreshToken();
-      // if refreshToken fails return
-      if (token === undefined) {
-        return [];
-      }
-      resp = await axios.post(config.restServer + "rilevazioni", null, {
+    if (isInvalidTokenStatus(resp.status))
+      throw new InvalidTokenError("Your token is invalid");
+  }
+  let awaitRilevazioni = [];
+  for (const url in resp.data.rilevazioni) {
+    awaitRilevazioni.push(
+      axios.post(url, null, {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
         },
-      });
-    }
-    let awaitRilevazioni = [];
-    for (const url in resp.data.rilevazioni) {
-      awaitRilevazioni.push(fetchRilevazione(token, url));
-    }
-    let rilevazioni = [];
-    // wait to fetch all rilevazioni
-    for (const rilevazione in await Promise.all(awaitRilevazioni)) {
-      if (300 <= rilevazione.status || rilevazione.status < 200) {
-        token = await doRefreshToken();
-        // if refreshToken fails return
-        if (token === undefined) {
-          return [];
-        }
-        // else retry
-        return fetchRilevazioni(token);
-      }
-      rilevazioni.push(rilevazione.data);
-    }
-    return rilevazioni;
-  } catch {
-    alert("An error occured");
-    return [];
+      })
+    );
   }
+  let rilevazioni = [];
+  // wait to fetch all rilevazioni
+  for (const rilevazione in await Promise.all(awaitRilevazioni)) {
+    if (isInvalidTokenStatus(rilevazione.status)) {
+      token = await doRefreshToken();
+      // retry
+      return fetchRilevazioni(token);
+    }
+    rilevazioni.push(rilevazione.data);
+  }
+  return rilevazioni;
+}
+
+function isEqualOrNull(value, v) {
+  return value === "" || value === undefined || value === null || value === v;
+}
+
+function containsOrNull(arr, v) {
+  return arr === undefined || arr === null || arr.inclused(v);
 }
 
 const Rilevazioni = ({ style }) => {
-  const token = sessionStorage.getItem("accessToken");
-  useTokenVerify(token);
+  const navigate = useNavigate();
 
   const [rilevazioni, setRilevazioni] = useState([]);
   const [id, setId] = useState("");
-  const [data, setData] = useState("");
-  const [tipoInquinante, setTipoInquinante] = useState("");
+  const [tipiInquinanti, setTipiInquinanti] = useState();
   const [valore, setValore] = useState("");
 
-  fetchRilevazioni(token)
-    .then((resp) => {
-      setRilevazioni(resp);
-    })
-    .catch(() => alert("An err occured"));
+  useEffect(() => {
+    const token = sessionStorage.getItem("accessToken");
+    fetchRilevazioni(token)
+      .then((resp) => {
+        setRilevazioni(resp);
+      })
+      .catch((err) => {
+        if (err instanceof InvalidTokenError) return navigate("/");
+        //alert("An err occured");
+      });
+  }, [navigate]);
 
   const tableStyle = {
     padding: 20,
@@ -122,22 +119,30 @@ const Rilevazioni = ({ style }) => {
   return (
     <Grid container style={style}>
       <Paper style={paperStyle}>
-        <Typography fontWeight={600}>FILTER BY</Typography>
-        {/*
         <TextField
-          onChange={(e) => setSite(e.target.value)}
-          label="site"
-          placeholder="Filter by site"
+          onChange={(e) => {
+            setId(e.target.value);
+          }}
+          label="ID rilevazione"
+          placeholder="Filtra per id"
           fullWidth
           style={inputStyle}
         ></TextField>
-  */}
+        <TextField
+          onChange={(e) => {
+            setTipiInquinanti(e.target.value.replace(/\s/g, "").split(","));
+          }}
+          label="Tipi inquinanti"
+          placeholder="separati da ,"
+          fullWidth
+          style={inputStyle}
+        ></TextField>
       </Paper>
       <TableContainer component={Paper} style={tableStyle} elevation={10}>
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
             <TableRow>
-              <TableCell style={headerCellStyle}>RILEVAZIONE ID</TableCell>
+              <TableCell style={headerCellStyle}>ID RILEVAZIONE</TableCell>
               <TableCell style={headerCellStyle} align="right">
                 DATA
               </TableCell>
@@ -150,28 +155,33 @@ const Rilevazioni = ({ style }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rilevazioni.map(
-              (rilevazione) =>
-                true && (
-                  <TableRow
-                    key={rilevazione.id}
-                    sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                  >
-                    <TableCell style={bodyCellStyle} component="th" scope="row">
-                      {rilevazione.id}
-                    </TableCell>
-                    <TableCell style={bodyCellStyle} align="right">
-                      {rilevazione.data}
-                    </TableCell>
-                    <TableCell style={bodyCellStyle} align="right">
-                      {rilevazione.tipoInquinante}
-                    </TableCell>
-                    <TableCell style={bodyCellStyle} align="right">
-                      {rilevazione.valore}
-                    </TableCell>
-                  </TableRow>
-                )
-            )}
+            {rilevazioni
+              .filter((rilevazione) => {
+                return (
+                  isEqualOrNull(id, rilevazione.id) &&
+                  containsOrNull(tipiInquinanti, rilevazione.tipoInquinante) &&
+                  isEqualOrNull(valore, rilevazione.valore)
+                );
+              })
+              .map((rilevazione) => (
+                <TableRow
+                  key={rilevazione.id}
+                  sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+                >
+                  <TableCell style={bodyCellStyle} component="th" scope="row">
+                    {rilevazione.id}
+                  </TableCell>
+                  <TableCell style={bodyCellStyle} align="right">
+                    {rilevazione.data}
+                  </TableCell>
+                  <TableCell style={bodyCellStyle} align="right">
+                    {rilevazione.tipoInquinante}
+                  </TableCell>
+                  <TableCell style={bodyCellStyle} align="right">
+                    {rilevazione.valore}
+                  </TableCell>
+                </TableRow>
+              ))}
           </TableBody>
         </Table>
       </TableContainer>

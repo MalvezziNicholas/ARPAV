@@ -1,33 +1,4 @@
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
-
-export function useTokenVerify(token) {
-  const navigate = useNavigate();
-  fetch("config.json")
-    .then((resp) => resp.json())
-    .then((resp) =>
-      axios
-        .post(
-          resp.restAuthenticationServer + "verify",
-          {
-            token,
-          },
-          {
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        )
-        .then((resp) => {
-          if (300 <= resp.status || resp.status < 200) {
-            navigate("/");
-          }
-        })
-        .catch(() => {
-          navigate("/");
-        })
-    );
-}
 
 export async function refreshToken(refreshToken) {
   const config = await (await fetch("config.json")).json();
@@ -42,4 +13,23 @@ export async function refreshToken(refreshToken) {
       },
     }
   );
+}
+
+export async function doRefreshToken() {
+  let resp = await refreshToken(sessionStorage.getItem("refreshToken"));
+  if (isInvalidTokenStatus(resp.status))
+    throw new InvalidTokenError("Your token is invalid");
+  sessionStorage.setItem("accessToken", resp.data.accessToken);
+  return resp.data.accessToken;
+}
+
+export class InvalidTokenError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "InvalidTokenError";
+  }
+}
+
+export function isInvalidTokenStatus(status) {
+  return status === 403 || status === 401;
 }
