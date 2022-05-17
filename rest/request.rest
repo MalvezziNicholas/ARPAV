@@ -24,8 +24,16 @@ Content-Type: application/json
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im1hcmlvIiwiaWF0IjoxNjUyMjIyNzk4fQ.ZM-7WhYc6F66VDJvDX_UEQvIUr_A4xe0QfkVpowC_q0"
 }
 
+###
+
+GET http://localhost:8000/v1.1/misurazioni?$lookup=1&tipoInquinante=pm10&$where={ "$expr": { "$eq": [{ "$year": "$data" }, 2021] } }
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im1hcmlvIiwiaWF0IjoxNjUyMjI4MTAxLCJleHAiOjE2NTIyMjk5MDF9.0YCi1XqM9d7PpdQEmn1yBcZnI8M3S7zHHX8FS5-XSaA
 
 ###
 
-GET http://localhost:8000/rilevazioni?_where=or(and(ge(valore,6),le(valore,20)),eq(valore,34))
+GET http://localhost:8000/v1.1/stazioni
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im1hcmlvIiwiaWF0IjoxNjUyMjI4MTAxLCJleHAiOjE2NTIyMjk5MDF9.0YCi1XqM9d7PpdQEmn1yBcZnI8M3S7zHHX8FS5-XSaA
+
+###
+
+GET http://localhost:8000/v1.1/stats?$group={"_id":{"month":{"$month":"$data"},"tipoInquinante":"$tipoInquinante","provincia":"$stazione"},"mis media":{"$avg":"$mis"},"tot mis":{"$sum":"$mis"},"max mis":{"$max":"$mis"},"misurazioni":{"$sum":1}}
