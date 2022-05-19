@@ -6,7 +6,7 @@ import axios from "axios";
 
 import Navbar from "./components/navbar";
 import Login from "./components/login";
-import Rilevazioni from "./components/rilevazioni";
+import Misurazioni from "./components/misurazioni";
 import Stazioni from "./components/stazioni";
 
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
@@ -47,7 +47,7 @@ root.render(
         element={
           <>
             <Navbar />
-            <Login style={{ padding: "100px" }} />
+            <Login style={{ padding: "80px" }} />
           </>
         }
       />
@@ -57,16 +57,16 @@ root.render(
           <>
             <Navbar
               items={[
-                { text: "rilevazioni", url: "/rilevazioni" },
+                { text: "misurazioni", url: "/misurazioni" },
                 { text: "logout", url: "/", onClick: logout },
               ]}
             />
-            <Stazioni style={{ padding: "100px" }} />
+            <Stazioni style={{ padding: "80px" }} />
           </>
         }
       />
       <Route
-        path="/rilevazioni"
+        path="/misurazioni"
         element={
           <>
             <Navbar
@@ -75,7 +75,7 @@ root.render(
                 { text: "logout", url: "/", onClick: logout },
               ]}
             />
-            <Rilevazioni style={{ padding: "100px" }} />
+            <Misurazioni style={{ padding: "80px" }} />
           </>
         }
       />

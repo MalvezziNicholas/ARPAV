@@ -1,5 +1,6 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const cors = require("cors");
 
 require("dotenv").config();
 const app = express();
@@ -19,6 +20,7 @@ mongoose
   .catch((err) => console.error(err));
 
 app.use(express.json());
+app.use(cors());
 
 const v1_1 = require("./versions/v1.1");
 app.use("/v1.1/stazioni", v1_1.stazioni);
