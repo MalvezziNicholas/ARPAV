@@ -32,7 +32,7 @@ const Navbar = ({ items }) => {
   }, [width]);
   return (
     <Box sx={{ flexGrow: 1 }}>
-      <AppBar position="static" style={{ backgroundColor: "#ffffff" }}>
+      <AppBar position="static" style={{ backgroundColor: "#fb5b21" }}>
         <Toolbar>
           <Box sx={{ flexGrow: 1 }}>
             <Button onClick={() => navigate("/")}>

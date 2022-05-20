@@ -42,6 +42,7 @@ router.get("/", authenticateToken, async (req, res) => {
     const response = await Misurazizone.aggregate(pipeline);
     res.send(response);
   } catch (err) {
+    console.log(err);
     res.status(500).send({ error: err.message });
   }
 });

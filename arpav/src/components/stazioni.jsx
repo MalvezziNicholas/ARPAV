@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { AutoSizer, Column, Table } from "react-virtualized";
+
+import "react-virtualized/styles.css";
 
 import {
-  Table,
-  TableBody,
   TableCell,
   TableContainer,
-  TableHead,
-  TableRow,
   Paper,
   Grid,
   TextField,
@@ -22,102 +21,74 @@ import axios from "axios";
 
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-async function fetchStazione(token, _id) {
-  const config = await (await fetch("config.json")).json();
-  var resp = await axios.get(
-    config.restServer + "stazioni/" + _id,
-    {},
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token,
-      },
-    }
-  );
-  // if resp.status is not ok try to refreshToken
-  if (isInvalidTokenStatus(resp.status)) {
-    token = await doRefreshToken();
-    // retry
-    resp = await axios.get(
-      config.restServer + "stazioni/" + _id,
-      {},
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-      }
-    );
-    if (isInvalidTokenStatus(resp.status))
-      throw new InvalidTokenError("Your token is invalid");
-  }
-  return resp.data;
-}
-
-async function fetchStazioni(token, _id) {
-  if (!isNotDefined(_id)) return [await fetchStazione(token, _id)];
-  const config = await (await fetch("config.json")).json();
-  var resp = await axios.get(
-    config.restServer + "stazioni",
-    {},
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token,
-      },
-    }
-  );
-  // if resp.status is not ok try to refreshToken
-  if (isInvalidTokenStatus(resp.status)) {
-    token = await doRefreshToken();
-    // retry
-    resp = await axios.get(
-      config.restServer + "stazioni",
-      {},
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + token,
-        },
-      }
-    );
-    if (isInvalidTokenStatus(resp.status))
-      throw new InvalidTokenError("Your token is invalid");
-  }
-  let awaitStazioni = [];
-  for (const url of resp.data) {
-    awaitStazioni.push(
-      axios.get(
-        url,
-        {},
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-          },
-        }
-      )
-    );
-  }
+async function awaitStazioni(stazioniToAwait, setStazioni) {
   let stazioni = [];
-  // wait to fetch all stazioni
-  for (const stazione of await Promise.all(awaitStazioni)) {
+  for (const stazione of await Promise.all(stazioniToAwait)) {
     if (isInvalidTokenStatus(stazione.status)) {
-      token = await doRefreshToken();
-      // retry
-      return fetchStazioni(token);
+      throw new InvalidTokenError("Your token is invalid");
     }
     stazioni.push(stazione.data);
   }
-  return stazioni;
+  setStazioni(stazioni);
+  return new Promise((r) => setTimeout(r, 1000));
+}
+
+async function fetchStazioni(token, searchId, setStazioni, attemts) {
+  try {
+    const config = await (await fetch("config.json")).json();
+    let uri = config.restServer + "stazioni";
+    if (!isNotDefined(searchId)) {
+      uri += `?$where={"_id":"${searchId}"}`;
+    }
+    var resp = await axios.get(
+      uri,
+      {},
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+      }
+    );
+    if (isInvalidTokenStatus(resp.status)) {
+      throw new InvalidTokenError("Your token is invalid");
+    }
+    let stazioniToAwait = [];
+    let i = 0;
+    for (const url of resp.data) {
+      stazioniToAwait.push(
+        axios.get(
+          url,
+          {},
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+          }
+        )
+      );
+      if (++i === 300) {
+        // wait to fetch all stazioni
+        await awaitStazioni(stazioniToAwait, setStazioni);
+        i = 0;
+      }
+    }
+    if (i) {
+      // fetch remaining
+      await awaitStazioni(stazioniToAwait, setStazioni);
+    }
+  } catch (err) {
+    if (err instanceof InvalidTokenError && !attemts) {
+      token = doRefreshToken();
+      setStazioni([]);
+      return fetchStazioni(token, searchId, setStazioni, 1);
+    }
+  }
 }
 
 function isNotDefined(v) {
   return v === undefined || v === null || v === "";
-}
-
-function isEqualOrNull(value, v) {
-  return isNotDefined(value) || value === v;
 }
 
 function containsOrNull(arr, v) {
@@ -125,19 +96,19 @@ function containsOrNull(arr, v) {
     arr === undefined || arr === null || arr.length === 0 || arr.includes(v)
   );
 }
-
-function parseComune(comune) {
-  if (comune.length > 23) return comune.substring(0, 20) + "...";
-  return comune;
+function parseCellData(cellData) {
+  if (cellData.length > 24) return cellData.substring(0, 21) + "...";
+  return cellData;
 }
 
-const Stazioni = ({ style }) => {
+const Stazioni = (props) => {
   const navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
-  const search_id = searchParams.get("_id");
+  const searchId = searchParams.get("id");
 
   const [stazioni, setStazioni] = useState([]);
+  const [filteredStazioni, setFilteredStazioni] = useState([]);
   const [id, setId] = useState();
   const [nomi, setNomi] = useState([]);
   const [localita, setLocalita] = useState([]);
@@ -146,41 +117,136 @@ const Stazioni = ({ style }) => {
   const [tipizona, setTipizona] = useState([]);
 
   useEffect(() => {
-    const token = sessionStorage.getItem("accessToken");
-    fetchStazioni(token, search_id)
-      .then((resp) => {
-        setStazioni(resp);
+    setFilteredStazioni(
+      stazioni.filter((rilevazione) => {
+        return (
+          containsOrNull(id, rilevazione._id) &&
+          containsOrNull(nomi, rilevazione.nome) &&
+          containsOrNull(localita, rilevazione.localita) &&
+          containsOrNull(province, rilevazione.provincia) &&
+          containsOrNull(comuni, rilevazione.comune) &&
+          containsOrNull(tipizona, rilevazione.tipozona)
+        );
       })
-      .catch((err) => {
-        if (err instanceof InvalidTokenError) return navigate("/");
-        //alert("An err occured");
-      });
-  }, [navigate, search_id]);
-  console.log(stazioni);
+    );
+  }, [stazioni, id, nomi, localita, comuni, province, tipizona]);
 
-  const tableStyle = {
-    padding: 20,
-    width: "95%",
-    backgroundColor: "#243142",
-    margin: "auto",
+  useEffect(() => {
+    const token = sessionStorage.getItem("accessToken");
+    fetchStazioni(token, searchId, setStazioni, 0).catch((err) => {
+      if (err instanceof InvalidTokenError) return navigate("/login");
+      alert("An err occured");
+    });
+  }, [navigate, searchId]);
+
+  const headerHeight = 48;
+  const rowHeight = 48;
+
+  const header = [
+    {
+      width: 600,
+      label: "ID STAZIONE",
+      dataKey: "_id",
+    },
+
+    {
+      width: 600,
+      label: "NOME",
+      dataKey: "nome",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "LOCALITA",
+      dataKey: "localita",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "COMUNE",
+      dataKey: "comune",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "PROVINCIA",
+      dataKey: "provincia",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "TIPOZONA",
+      dataKey: "tipozona",
+      numeric: true,
+    },
+  ];
+
+  const cellRenderer = ({ cellData, columnIndex }) => {
+    return (
+      <TableCell
+        component="div"
+        variant="body"
+        style={{
+          fontSize: 15,
+          color: "#000000",
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          boxSizing: "border-box",
+        }}
+        align={
+          columnIndex != null && header[columnIndex].numeric ? "right" : "left"
+        }
+      >
+        {parseCellData(cellData)}
+      </TableCell>
+    );
   };
+
+  const headerRenderer = ({ label, columnIndex }) => {
+    return (
+      <TableCell
+        component="div"
+        variant="head"
+        style={{
+          fontWeight: 600,
+          fontSize: 17,
+          color: "#000000",
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          boxSizing: "border-box",
+        }}
+        align={header[columnIndex].numeric ? "right" : "left"}
+      >
+        {label}
+      </TableCell>
+    );
+  };
+
   const paperStyle = {
-    padding: 20,
-    width: "95%",
+    padding: 15,
+    width: "100%",
     backgroundColor: "#ffffff",
     margin: "auto",
   };
+
+  const tableStyle = {
+    padding: 20,
+    width: "100%",
+    backgroundColor: "#fb5b21",
+    margin: "auto",
+    height: 600,
+  };
+
   const inputStyle = {
     backgroundColor: "#ffffff",
     width: 150,
     margin: 10,
   };
 
-  const headerCellStyle = { fontSize: 20, color: "#ffffff" };
-  const bodyCellStyle = { color: "#ffffff" };
-
   return (
-    <Grid container style={style}>
+    <Grid container style={props.style}>
       <Paper style={paperStyle}>
         <TextField
           onChange={(e) => {
@@ -263,84 +329,50 @@ const Stazioni = ({ style }) => {
         ></TextField>
       </Paper>
       <TableContainer component={Paper} style={tableStyle} elevation={10}>
-        <Table sx={{ minWidth: 650 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell style={headerCellStyle}>ID STAZIONE</TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                NOME
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                LOCALITÀ
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                COMUNE
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                PROVINCIA
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                TIPO ZONA
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                LATITUDINE
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                LONGITUDINE
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {stazioni
-              .filter((stazione) => {
-                return (
-                  isEqualOrNull(id, stazione._id) &&
-                  containsOrNull(nomi, stazione.nome) &&
-                  containsOrNull(localita, stazione.localita) &&
-                  containsOrNull(comuni, stazione.comune) &&
-                  containsOrNull(province, stazione.provincia) &&
-                  containsOrNull(tipizona, stazione.tipozona)
+        <AutoSizer>
+          {({ height, width }) => (
+            <Table
+              rowCount={filteredStazioni.length}
+              rowGetter={({ index }) => filteredStazioni[index]}
+              height={height}
+              width={width}
+              rowHeight={rowHeight}
+              gridStyle={{
+                direction: "inherit",
+              }}
+              headerHeight={headerHeight}
+              rowStyle={{
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                boxSizing: "border-box",
+                flex: 1,
+              }}
+              onRowClick={({ index }) => {
+                navigate(
+                  "/misurazioni?stazione=" + filteredStazioni[index]._id
                 );
-              })
-              .map((stazione) => (
-                <TableRow
-                  key={stazione._id}
-                  sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                  style={{ cursor: "pointer" }}
-                  onClick={() =>
-                    navigate("/misurazioni?stazione=" + stazione._id)
-                  }
-                >
-                  <TableCell style={bodyCellStyle} component="th" scope="row">
-                    {stazione._id}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {stazione.nome}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {stazione.localita}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {parseComune(stazione.comune)}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {stazione.provincia}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {stazione.tipozona}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {stazione.lat}
-                    {!stazione.lat && "unknown"}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {stazione.lon}
-                    {!stazione.lon && "unknown"}
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
+              }}
+            >
+              {header.map(({ dataKey, ...other }, index) => {
+                return (
+                  <Column
+                    key={dataKey}
+                    headerRenderer={(headerProps) =>
+                      headerRenderer({
+                        ...headerProps,
+                        columnIndex: index,
+                      })
+                    }
+                    cellRenderer={cellRenderer}
+                    dataKey={dataKey}
+                    {...other}
+                  />
+                );
+              })}
+            </Table>
+          )}
+        </AutoSizer>
       </TableContainer>
     </Grid>
   );

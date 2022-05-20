@@ -21,27 +21,31 @@ import axios from "axios";
 
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-async function fetchMisurazioni(token, _id) {
-  const config = await (await fetch("config.json")).json();
-  let uri = config.restServer + "misurazioni";
-  if (!isNotDefined(_id)) {
-    uri += `?$where={"stazione":"${_id}"}`;
-  }
-  var resp = await axios.get(
-    uri,
-    {},
-    {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token,
-      },
+async function awaitMisurazioni(misurazioniToAwait, setMisurazioni) {
+  let misurazioni = [];
+  for (const misurazione of await Promise.all(misurazioniToAwait)) {
+    if (isInvalidTokenStatus(misurazione.status)) {
+      throw new InvalidTokenError("Your token is invalid");
     }
-  );
-  // if resp.status is not ok try to refreshToken
-  if (isInvalidTokenStatus(resp.status)) {
-    token = await doRefreshToken();
-    // retry
-    resp = await axios.get(
+    misurazioni.push(misurazione.data);
+  }
+  setMisurazioni(misurazioni);
+  return new Promise((r) => setTimeout(r, 1000));
+}
+
+async function fetchMisurazioni(
+  token,
+  searchStazioneId,
+  setMisurazioni,
+  attemts
+) {
+  try {
+    const config = await (await fetch("config.json")).json();
+    let uri = config.restServer + "misurazioni";
+    if (!isNotDefined(searchStazioneId)) {
+      uri += `?$where={"stazione":"${searchStazioneId}"}`;
+    }
+    var resp = await axios.get(
       uri,
       {},
       {
@@ -51,36 +55,41 @@ async function fetchMisurazioni(token, _id) {
         },
       }
     );
-    if (isInvalidTokenStatus(resp.status))
+    if (isInvalidTokenStatus(resp.status)) {
       throw new InvalidTokenError("Your token is invalid");
-  }
-  let awaitMisurazioni = [];
-  resp.data.length = 100;
-  for (const url of resp.data) {
-    awaitMisurazioni.push(
-      axios.get(
-        url,
-        {},
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-          },
-        }
-      )
-    );
-  }
-  let misurazioni = [];
-  // wait to fetch all misurazioni
-  for (const misurazione of await Promise.all(awaitMisurazioni)) {
-    if (isInvalidTokenStatus(misurazione.status)) {
-      token = await doRefreshToken();
-      // retry
-      return fetchMisurazioni(token);
     }
-    misurazioni.push(misurazione.data);
+    let misurazioniToAwait = [];
+    let i = 0;
+    for (const url of resp.data) {
+      misurazioniToAwait.push(
+        axios.get(
+          url,
+          {},
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+            },
+          }
+        )
+      );
+      if (++i === 300) {
+        // wait to fetch all misurazioni
+        await awaitMisurazioni(misurazioniToAwait, setMisurazioni);
+        i = 0;
+      }
+    }
+    if (i) {
+      // fetch remaining
+      await awaitMisurazioni(misurazioniToAwait, setMisurazioni);
+    }
+  } catch (err) {
+    if (err instanceof InvalidTokenError && !attemts) {
+      token = doRefreshToken();
+      setMisurazioni([]);
+      return fetchMisurazioni(token, searchStazioneId, setMisurazioni, 1);
+    }
   }
-  return misurazioni;
 }
 
 function isNotDefined(v) {
@@ -113,7 +122,7 @@ const Misurazioni = (props) => {
   const navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
-  const search_id = searchParams.get("stazione");
+  const searchStazioneId = searchParams.get("stazione");
 
   const [misurazioni, setMisurazioni] = useState([]);
   const [filteredMisurazioni, setFilteredMisurazioni] = useState([]);
@@ -157,15 +166,13 @@ const Misurazioni = (props) => {
 
   useEffect(() => {
     const token = sessionStorage.getItem("accessToken");
-    fetchMisurazioni(token, search_id)
-      .then((resp) => {
-        setMisurazioni(resp);
-      })
-      .catch((err) => {
-        if (err instanceof InvalidTokenError) return navigate("/");
-        //alert("An err occured");
-      });
-  }, [navigate, search_id]);
+    fetchMisurazioni(token, searchStazioneId, setMisurazioni, 0).catch(
+      (err) => {
+        if (err instanceof InvalidTokenError) return navigate("/login");
+        alert("An err occured");
+      }
+    );
+  }, [navigate, searchStazioneId]);
 
   const headerHeight = 48;
   const rowHeight = 48;
@@ -205,13 +212,20 @@ const Misurazioni = (props) => {
 
   const cellRenderer = ({ cellData, columnIndex }) => {
     let style = {
-      color: "#ffffff",
+      fontSize: 15,
+      color: "#000000",
       flex: 1,
       display: "flex",
       alignItems: "center",
       boxSizing: "border-box",
     };
-    header[columnIndex].dataKey === "stazione" && (style.cursor = "pointer");
+    let onClick = () => {};
+    if (header[columnIndex].dataKey === "stazione") {
+      style.cursor = "pointer";
+      onClick = () => {
+        navigate("/stazioni?id=" + cellData);
+      };
+    }
     return (
       <TableCell
         component="div"
@@ -220,6 +234,7 @@ const Misurazioni = (props) => {
         align={
           columnIndex != null && header[columnIndex].numeric ? "right" : "left"
         }
+        onClick={onClick}
       >
         {cellData}
       </TableCell>
@@ -233,8 +248,8 @@ const Misurazioni = (props) => {
         variant="head"
         style={{
           fontWeight: 600,
-          fontSize: 15,
-          color: "#ffffff",
+          fontSize: 17,
+          color: "#000000",
           flex: 1,
           display: "flex",
           alignItems: "center",
@@ -257,7 +272,7 @@ const Misurazioni = (props) => {
   const tableStyle = {
     padding: 20,
     width: "100%",
-    backgroundColor: "#243142",
+    backgroundColor: "#fb5b21",
     margin: "auto",
     height: 600,
   };

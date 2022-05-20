@@ -44,6 +44,7 @@ const Login = ({ style }) => {
         resp.data.accessToken === undefined ||
         resp.data.refreshToken === undefined
       ) {
+        console.log(err);
         setErr("unexpected error");
         return;
       }
@@ -51,6 +52,7 @@ const Login = ({ style }) => {
       sessionStorage.setItem("refreshToken", resp.data.refreshToken);
       navigate("/stazioni");
     } catch (err) {
+      console.log(err);
       setErr("unexpected error");
     }
   };
@@ -59,7 +61,7 @@ const Login = ({ style }) => {
   const navigate = useNavigate();
 
   const [err, setErr] = useState("");
-  const [username, setUsername] = useState(cookieManager.get("email"));
+  const [username, setUsername] = useState(cookieManager.get("username"));
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
 
@@ -69,7 +71,8 @@ const Login = ({ style }) => {
     .catch(() => setErr("unexpected error"));
   const paperStyle = {
     padding: 20,
-    width: 600,
+    width: 800,
+    height: 350,
     backgroundColor: "#ffffff",
     margin: "auto",
   };
