@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { AutoSizer, Column, Table } from "react-virtualized";
+
+import "react-virtualized/styles.css";
 
 import {
-  Table,
-  TableBody,
   TableCell,
   TableContainer,
-  TableHead,
-  TableRow,
   Paper,
   Grid,
   TextField,
@@ -56,6 +55,7 @@ async function fetchMisurazioni(token, _id) {
       throw new InvalidTokenError("Your token is invalid");
   }
   let awaitMisurazioni = [];
+  resp.data.length = 100;
   for (const url of resp.data) {
     awaitMisurazioni.push(
       axios.get(
@@ -109,19 +109,51 @@ function containsOrNull(arr, v) {
   );
 }
 
-const Misurazioni = ({ style }) => {
+const Misurazioni = (props) => {
   const navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
   const search_id = searchParams.get("stazione");
 
   const [misurazioni, setMisurazioni] = useState([]);
+  const [filteredMisurazioni, setFilteredMisurazioni] = useState([]);
   const [id, setId] = useState("");
   const [stazioneId, setStazioneId] = useState("");
   const [tipiInquinanti, setTipiInquinanti] = useState();
   const [valoreMin, setValoreMin] = useState();
   const [valoreMax, setValoreMax] = useState();
+  const [anno, setAnno] = useState();
   const [mese, setMese] = useState();
+
+  useEffect(() => {
+    setFilteredMisurazioni(
+      misurazioni.filter((misurazione) => {
+        return (
+          isEqualOrNull(id, misurazione._id) &&
+          isEqualOrNull(stazioneId, misurazione.stazione) &&
+          containsOrNull(tipiInquinanti, misurazione.tipoInquinante) &&
+          isBetweenOrNull(valoreMin, valoreMax, misurazione.mis) &&
+          isEqualOrNull(
+            anno,
+            new Date(misurazione.data).getFullYear().toString()
+          ) &&
+          isEqualOrNull(
+            mese,
+            (new Date(misurazione.data).getMonth() + 1).toString()
+          )
+        );
+      })
+    );
+  }, [
+    misurazioni,
+    id,
+    stazioneId,
+    tipiInquinanti,
+    valoreMin,
+    valoreMax,
+    anno,
+    mese,
+  ]);
 
   useEffect(() => {
     const token = sessionStorage.getItem("accessToken");
@@ -135,35 +167,109 @@ const Misurazioni = ({ style }) => {
       });
   }, [navigate, search_id]);
 
-  const tableStyle = {
-    padding: 20,
-    width: "95%",
-    backgroundColor: "#243142",
-    margin: "auto",
+  const headerHeight = 48;
+  const rowHeight = 48;
+
+  const header = [
+    {
+      width: 600,
+      label: "ID MISURAZIONE",
+      dataKey: "_id",
+    },
+
+    {
+      width: 600,
+      label: "DATA",
+      dataKey: "data",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "INQUINANTE",
+      dataKey: "tipoInquinante",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "MISURAZIONE",
+      dataKey: "mis",
+      numeric: true,
+    },
+    {
+      width: 600,
+      label: "ID STAZIONE",
+      dataKey: "stazione",
+      numeric: true,
+    },
+  ];
+
+  const cellRenderer = ({ cellData, columnIndex }) => {
+    let style = {
+      color: "#ffffff",
+      flex: 1,
+      display: "flex",
+      alignItems: "center",
+      boxSizing: "border-box",
+    };
+    header[columnIndex].dataKey === "stazione" && (style.cursor = "pointer");
+    return (
+      <TableCell
+        component="div"
+        variant="body"
+        style={style}
+        align={
+          columnIndex != null && header[columnIndex].numeric ? "right" : "left"
+        }
+      >
+        {cellData}
+      </TableCell>
+    );
   };
+
+  const headerRenderer = ({ label, columnIndex }) => {
+    return (
+      <TableCell
+        component="div"
+        variant="head"
+        style={{
+          fontWeight: 600,
+          fontSize: 15,
+          color: "#ffffff",
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          boxSizing: "border-box",
+        }}
+        align={header[columnIndex].numeric ? "right" : "left"}
+      >
+        {label}
+      </TableCell>
+    );
+  };
+
   const paperStyle = {
-    padding: 20,
-    width: "95%",
+    padding: 15,
+    width: "100%",
     backgroundColor: "#ffffff",
     margin: "auto",
   };
+
+  const tableStyle = {
+    padding: 20,
+    width: "100%",
+    backgroundColor: "#243142",
+    margin: "auto",
+    height: 600,
+  };
+
   const inputStyle = {
     backgroundColor: "#ffffff",
     width: 150,
     margin: 10,
   };
 
-  const headerCellStyle = { fontSize: 20, color: "#ffffff" };
-  const bodyCellStyle = {
-    color: "#ffffff",
-  };
-  const stazioneBodyCell = {
-    color: "#ffffff",
-    cursor: "pointer",
-  };
-
   return (
-    <Grid container style={style}>
+    <Grid container style={props.style}>
       <Paper style={paperStyle}>
         <TextField
           onChange={(e) => {
@@ -220,6 +326,16 @@ const Misurazioni = ({ style }) => {
         <TextField
           type="number"
           onChange={(e) => {
+            setAnno(e.target.value);
+          }}
+          label="Anno"
+          placeholder="Filtra per anno"
+          fullWidth
+          style={inputStyle}
+        ></TextField>
+        <TextField
+          type="number"
+          onChange={(e) => {
             setMese(e.target.value);
           }}
           label="Numero mese"
@@ -229,68 +345,44 @@ const Misurazioni = ({ style }) => {
         ></TextField>
       </Paper>
       <TableContainer component={Paper} style={tableStyle} elevation={10}>
-        <Table sx={{ minWidth: 650 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell style={headerCellStyle}>ID RILEVAZIONE</TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                DATA
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                INQUINANTE
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                VALORE
-              </TableCell>
-              <TableCell style={headerCellStyle} align="right">
-                ID STAZIONE
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {misurazioni
-              .filter((misurazione) => {
+        <AutoSizer>
+          {({ height, width }) => (
+            <Table
+              rowCount={filteredMisurazioni.length}
+              rowGetter={({ index }) => filteredMisurazioni[index]}
+              height={height}
+              width={width}
+              rowHeight={rowHeight}
+              gridStyle={{
+                direction: "inherit",
+              }}
+              headerHeight={headerHeight}
+              rowStyle={{
+                display: "flex",
+                alignItems: "center",
+                boxSizing: "border-box",
+                flex: 1,
+              }}
+            >
+              {header.map(({ dataKey, ...other }, index) => {
                 return (
-                  isEqualOrNull(id, misurazione._id) &&
-                  isEqualOrNull(stazioneId, misurazione.stazione) &&
-                  containsOrNull(tipiInquinanti, misurazione.tipoInquinante) &&
-                  isBetweenOrNull(valoreMin, valoreMax, misurazione.mis) &&
-                  isEqualOrNull(
-                    mese,
-                    (new Date(misurazione.data).getMonth() + 1).toString()
-                  )
-                );
-              })
-              .map((misurazione) => (
-                <TableRow
-                  key={misurazione._id}
-                  sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-                >
-                  <TableCell style={bodyCellStyle} component="th" scope="row">
-                    {misurazione._id}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {misurazione.data}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {misurazione.tipoInquinante}
-                  </TableCell>
-                  <TableCell style={bodyCellStyle} align="right">
-                    {misurazione.mis}
-                  </TableCell>
-                  <TableCell
-                    style={stazioneBodyCell}
-                    align="right"
-                    onClick={() =>
-                      navigate("/stazioni?_id=" + misurazione.stazione)
+                  <Column
+                    key={dataKey}
+                    headerRenderer={(headerProps) =>
+                      headerRenderer({
+                        ...headerProps,
+                        columnIndex: index,
+                      })
                     }
-                  >
-                    {misurazione.stazione}
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
+                    cellRenderer={cellRenderer}
+                    dataKey={dataKey}
+                    {...other}
+                  />
+                );
+              })}
+            </Table>
+          )}
+        </AutoSizer>
       </TableContainer>
     </Grid>
   );

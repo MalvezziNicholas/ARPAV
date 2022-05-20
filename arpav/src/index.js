@@ -47,7 +47,7 @@ root.render(
         element={
           <>
             <Navbar />
-            <Login style={{ padding: "80px" }} />
+            <Login style={{ padding: "50px" }} />
           </>
         }
       />
@@ -61,7 +61,7 @@ root.render(
                 { text: "logout", url: "/", onClick: logout },
               ]}
             />
-            <Stazioni style={{ padding: "80px" }} />
+            <Stazioni style={{ padding: "50px" }} />
           </>
         }
       />
@@ -75,7 +75,7 @@ root.render(
                 { text: "logout", url: "/", onClick: logout },
               ]}
             />
-            <Misurazioni style={{ padding: "80px" }} />
+            <Misurazioni style={{ padding: "50px" }} />
           </>
         }
       />
